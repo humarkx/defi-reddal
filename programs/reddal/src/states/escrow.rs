@@ -5,10 +5,8 @@ pub struct Escrow {
     pub seed: u64,
     pub bump: u8,
     pub initializer: Pubkey,
-    pub mint_a: Pubkey,
-    pub mint_b: Pubkey,
+    pub reddal_token: Pubkey,
     pub initializer_amount: u64,
-    pub taker_amount: u64,
 }
 
 impl Space for Escrow {
