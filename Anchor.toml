@@ -5,7 +5,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-reddal = "BPuZx3QmrJWSkWKQ1fo1rBeuYkP56Nyt5VuYNEPdkTiK"
+reddal = "BEL8p898YNJB5C4mv8azyvbrk6o2f6ANLAhuehr8rBBw"
 
 [registry]
 url = "https://api.apr.dev"

@@ -1,18 +1,30 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
-import { Reddal } from "../target/types/reddal";
-import { Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import {Program} from "@coral-xyz/anchor";
+import {Reddal} from "../target/types/reddal";
 import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  MINT_SIZE,
-  TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountIdempotentInstruction,
-  createInitializeMint2Instruction,
-  createMintToInstruction,
-  getAssociatedTokenAddressSync,
-  getMinimumBalanceForRentExemptMint,
+    Keypair,
+    LAMPORTS_PER_SOL,
+    PublicKey,
+    SystemProgram,
+    Transaction,
+    TransactionMessage,
+    VersionedTransaction
+} from "@solana/web3.js";
+import {
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    MINT_SIZE,
+    TOKEN_PROGRAM_ID,
+    createAssociatedTokenAccountIdempotentInstruction,
+    createInitializeMint2Instruction,
+    createMintToInstruction,
+    getAssociatedTokenAddressSync,
+    getMinimumBalanceForRentExemptMint,
 } from "@solana/spl-token";
-import { randomBytes } from "crypto";
+import {randomBytes} from "crypto";
+
+
+
+
 // describe("reddal", () => {
 //   // Configure the client to use the local cluster.
 //   anchor.setProvider(anchor.AnchorProvider.env());
@@ -34,53 +46,102 @@ import { randomBytes } from "crypto";
 
 
 describe("reddal", () => {
-  // 0. Set provider, connection and program
+    // 0. Set provider, connection and program
     anchor.setProvider(anchor.AnchorProvider.env());
-  const provider = anchor.getProvider();
-  const connection = provider.connection;
-  const program = anchor.workspace.Reddal as anchor.Program<Reddal>;
+    const provider = anchor.getProvider();
+    const connection = provider.connection;
+    const program = anchor.workspace.Reddal as anchor.Program<Reddal>;
 
-  // 1. Boilerplate
-  // Create token mints and token account addresses
-  const [challenger,challenged, challengerMint, challengedMint] = Array.from({ length: 4 }, () => Keypair.generate());
-    const [initializerAccountChallenger, initializerAccountChallenged, takerAccountChallenger, takerAccountChallenged] = [challenger, challenged]
-      .map((a) => [challengerMint, challengedMint].map((m) => getAssociatedTokenAddressSync(m.publicKey, a.publicKey)))
-      .flat();
 
-  //  Create Escrow and Vault addresses
+    // 1. Boilerplate
+    // Create token mints and token account addresses
+    const [challenger, challenged, tokenA, tokenB] = Array.from({ length: 4 }, () => Keypair.generate());
+    const [challengerAccountTokenA, challengerAccountTokenB, challengedAccountTokenA, challengedAccountTokenB] = [challenger, challenged]
+        .map((a) => [tokenA, tokenB].map((m) => getAssociatedTokenAddressSync(m.publicKey, a.publicKey)))
+        .flat();
+
+    //  Create Escrow and Vault addresses
     const seed = new anchor.BN(randomBytes(8));
 
-    //PDA
+    // //PDA
     const escrow = PublicKey.findProgramAddressSync(
-      [Buffer.from("state"), seed.toArrayLike(Buffer, "le", 8)],
-      program.programId
+        [Buffer.from("state"), seed.toArrayLike(Buffer, "le", 8)],
+        program.programId
     )[0];
-    const vault = getAssociatedTokenAddressSync(challengerMint.publicKey, escrow, true);
 
+
+    const vault = getAssociatedTokenAddressSync(tokenA.publicKey, escrow, true);
+
+    // 2. Utils
     // Account Wrapper
-  const accounts = {
-    challenger: challenger.publicKey,
-    challenged: challenged.publicKey,
-    challengerMint: challengerMint.publicKey,
-    challengedMint: challengedMint.publicKey,
-    initializerAccountChallenger: initializerAccountChallenger,
-    initializerAccountChallenged: initializerAccountChallenged,
-    takerAccountChallenger,
-    takerAccountChallenged,
-    escrow,
-    vault,
-    associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
-    tokenProgram: TOKEN_PROGRAM_ID,
-    systemProgram: SystemProgram.programId,
-  };
+    const accounts = {
+        challenger: challenger.publicKey,
+        challenged: challenged.publicKey,
+        tokenA: tokenA.publicKey,
+        tokenB: tokenB.publicKey,
+        challengerAccountTokenA: challengerAccountTokenA,
+        challengerAccountTokenB: challengerAccountTokenB,
+        challengedAccountTokenA,
+        challengedAccountTokenB,
+        escrow,
+        vault,
+        associatedTokenprogram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+    };
+    const confirm = async (signature: string): Promise<string> => {
+        const block = await connection.getLatestBlockhash();
+        await connection.confirmTransaction({
+            signature,
+            ...block,
+        });
+        return signature;
+    };
 
-  console.log(accounts);
+    const log = async (signature: string): Promise<string> => {
+        console.log(
+            `Your transaction signature: https://explorer.solana.com/transaction/${signature}?cluster=custom&customUrl=${connection.rpcEndpoint}`
+        );
+        return signature;
+    };
+
+    it("Airdrop and create mints", async () => {
+        let lamports = await getMinimumBalanceForRentExemptMint(connection);
+        let tx = new Transaction();
+        tx.instructions = [
+          ...[challenger, challenged].map((k) =>
+              SystemProgram.transfer({
+                fromPubkey: provider.publicKey,
+                toPubkey: k.publicKey,
+                lamports: 0.01 * LAMPORTS_PER_SOL,
+              })
+          ),
+          ...[tokenA, tokenB].map((m) =>
+              SystemProgram.createAccount({
+                fromPubkey: provider.publicKey,
+                newAccountPubkey: m.publicKey,
+                lamports,
+                space: MINT_SIZE,
+                programId: TOKEN_PROGRAM_ID,
+              })
+          ),
+          ...[
+            [tokenA.publicKey, challenger.publicKey, challengerAccountTokenA],
+            [tokenB.publicKey, challenged.publicKey, challengedAccountTokenB],
+          ].flatMap((x) => [
+            createInitializeMint2Instruction(x[0], 6, x[1], null),
+            createAssociatedTokenAccountIdempotentInstruction(provider.publicKey, x[2], x[1], x[0]),
+            createMintToInstruction(x[0], x[2], x[1], 1e9),
+          ]),
+        ];
+
+        await provider.sendAndConfirm(tx, [tokenA, tokenB, challenger, challenged]).then(log);
+    });
 });
 
-
-
 //
-//
+// //
+// //
 // describe("anchor-escrow", () => {
 //   // 0. Set provider, connection and program
 //   anchor.setProvider(anchor.AnchorProvider.env());
@@ -102,7 +163,7 @@ describe("reddal", () => {
 //       program.programId
 //   )[0];
 //   const vault = getAssociatedTokenAddressSync(mintA.publicKey, escrow, true);
-
+//
 //   // 2. Utils
 //   // Account Wrapper
 //   const accounts = {

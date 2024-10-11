@@ -4,7 +4,7 @@ use contexts::*;
 mod states;
 
 // Rust Macro
-declare_id!("BPuZx3QmrJWSkWKQ1fo1rBeuYkP56Nyt5VuYNEPdkTiK");
+declare_id!("BEL8p898YNJB5C4mv8azyvbrk6o2f6ANLAhuehr8rBBw");
 
 #[program]
 pub mod reddal {
